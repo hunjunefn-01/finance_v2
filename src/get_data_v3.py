@@ -121,9 +121,11 @@ def process_all_files(file_map):
         # 2단계: 사용구분 생성
         df_kbank_standard['사용구분'] = np.select([df_kbank['입금금액_clean'] > 0, df_kbank['출금금액_clean'] > 0], ['입금', '출금'], default=pd.NA) 
         # 3단계: 사용내역 생성
-        df_kbank_standard['사용내역'] = combine_and_clean_str(df_kbank, ['거래구분', '적요내용'])
+        # df_kbank_standard['사용내역'] = combine_and_clean_str(df_kbank, ['거래구분', '적요내용'])
+        df_kbank_standard['사용내역'] = df_kbank['거래구분']
         # 4단계: 거래상대방 생성
-        df_kbank_standard['거래상대방'] = combine_and_clean_str(df_kbank, ['상대 은행', '상대 예금주명', '상대 계좌번호'])
+        # df_kbank_standard['거래상대방'] = combine_and_clean_str(df_kbank, ['상대 은행', '상대 예금주명', '상대 계좌번호'])
+        df_kbank_standard['거래상대방'] = df_kbank['적요내용']
         # 5단계: 입금액 생성
         df_kbank_standard['입금액'] = df_kbank['입금금액_clean']
         # 6단계: 출금액 생성
@@ -131,7 +133,8 @@ def process_all_files(file_map):
         # 7단계: 잔액 생성
         df_kbank_standard['잔액'] = clean_amount(df_kbank['잔액'])
         # 8단계: 메모 생성
-        df_kbank_standard['메모'] = df_kbank['메모'].replace('', pd.NA)
+        # df_kbank_standard['메모'] = df_kbank['메모'].replace('', pd.NA)
+        df_kbank_standard['메모'] = combine_and_clean_str(df_kbank, ['메모', '상대 은행', '상대 예금주명', '상대 계좌번호'])
         # 9단계: 파일 출처 추가
         df_kbank_standard['출처'] = '케이뱅크'
         
@@ -153,9 +156,11 @@ def process_all_files(file_map):
         df_toss_standard['사용구분'] = np.select([deposit_mask, withdraw_mask],['입금_' + df_toss['거래 유형'].astype(str), '출금_' + df_toss['거래 유형'].astype(str)],default=pd.NA)
         df_toss_standard['사용구분'] = df_toss_standard['사용구분'].str.replace('_nan', '').replace('nan', pd.NA) 
         # 3단계: 사용내역 생성
-        df_toss_standard['사용내역'] = combine_and_clean_str(df_toss, ['거래 기관', '적요'])
+        # df_toss_standard['사용내역'] = combine_and_clean_str(df_toss, ['거래 기관', '적요'])
+        df_toss_standard['사용내역'] = df_toss['거래 기관']
         # 4단계: 거래상대방 생성
-        df_toss_standard['거래상대방'] = combine_and_clean_str(df_toss, ['거래 기관', '계좌번호'])
+        # df_toss_standard['거래상대방'] = combine_and_clean_str(df_toss, ['거래 기관', '계좌번호'])
+        df_toss_standard['거래상대방'] = df_toss['적요']
         # 5단계: 입금액 생성
         df_toss_standard['입금액'] = df_toss['거래 금액_clean'].apply(lambda x: x if x > 0 else 0).astype(float)
         # 6단계: 출금액 생성
@@ -163,7 +168,8 @@ def process_all_files(file_map):
         # 7단계: 잔액 생성
         df_toss_standard['잔액'] = clean_amount(df_toss['거래 후 잔액'])
         # 8단계: 메모 생성
-        df_toss_standard['메모'] = df_toss['메모'].replace('', pd.NA)
+        # df_toss_standard['메모'] = df_toss['메모'].replace('', pd.NA)
+        df_toss_standard['메모'] = combine_and_clean_str(df_toss, ['메모', '계좌번호'])
         # 9단계: 파일 출처 추가
         df_toss_standard['출처'] = '토스뱅크'
         
@@ -177,8 +183,9 @@ def process_all_files(file_map):
         df_hcard_standard = pd.DataFrame(index=df_hcard.index)
         
         # 1단계: 거래일시 생성
-        date_str = df_hcard['이용일'].astype(str).str.replace(r'[년월일]', '.', regex=True).str.strip('.')
-        datetime_combined = date_str + ' 00:00:00'
+        date_str = df_hcard['이용일'].astype(str).str.replace(r'[년월일]', '', regex=True).str.strip()
+        date_str_clean = date_str.str.replace(' ', '.', regex=False)
+        datetime_combined = date_str_clean + ' 00:00:00'
         df_hcard_standard['거래일시'] = pd.to_datetime(datetime_combined, format='%Y.%m.%d %H:%M:%S', errors='coerce').dt.strftime('%Y.%m.%d %H:%M:%S').replace('NaT', pd.NA)
 
         df_hcard['이용금액_clean'] = clean_amount(df_hcard['이용금액']).fillna(0)
@@ -187,7 +194,8 @@ def process_all_files(file_map):
         # 3단계: 사용내역 생성
         df_hcard_standard['사용내역'] = combine_and_clean_str(df_hcard, ['카드구분', '카드명(카드번호 뒤 4자리)'])
         # 4단계: 거래상대방 생성
-        df_hcard_standard['거래상대방'] = combine_and_clean_str(df_hcard, ['가맹점명', '사업자번호'])
+        # df_hcard_standard['거래상대방'] = combine_and_clean_str(df_hcard, ['가맹점명', '사업자번호'])
+        df_hcard_standard['거래상대방'] = df_hcard['가맹점명']
         # 5단계: 입금액 생성
         df_hcard_standard['입금액'] = 0.0
         # 6단계: 출금액 생성
@@ -195,7 +203,9 @@ def process_all_files(file_map):
         # 7단계: 잔액 생성
         df_hcard_standard['잔액'] = pd.NA
         # 8단계: 메모 생성
-        df_hcard_standard['메모'] = combine_and_clean_str(df_hcard, ['승인번호', '할부 개월'])
+        df_hcard['메모_할부_정리'] = df_hcard['할부 개월'].astype(str).str.strip()
+        df_hcard['메모_할부_정리'] = df_hcard['메모_할부_정리'].replace('00개월', '일시불')
+        df_hcard_standard['메모'] = combine_and_clean_str(df_hcard, ['승인번호', '메모_할부_정리', '사업자번호'])
         # 9단계: 파일 출처 추가
         df_hcard_standard['출처'] = '현대카드'
         
@@ -209,17 +219,32 @@ def process_all_files(file_map):
         df_nh_standard = pd.DataFrame(index=df_nh.index)
 
         # 1단계: 거래일시 생성
-        datetime_series = df_nh['거래일시'].astype(str).str.replace(r'[\/\s]+', '.', regex=True).str.strip('.')
+        datetime_series = df_nh['거래일시'].astype(str).str.replace(r'\/', '.', regex=True).str.strip()
         df_nh_standard['거래일시'] = pd.to_datetime(datetime_series, format='%Y.%m.%d %H:%M:%S', errors='coerce').dt.strftime('%Y.%m.%d %H:%M:%S').replace('NaT', pd.NA)
         
         df_nh['입금금액_clean'] = clean_amount(df_nh['입금금액']).fillna(0)
         df_nh['출금금액_clean'] = clean_amount(df_nh['출금금액']).fillna(0)
         # 2단계: 사용구분 생성
-        df_nh_standard['사용구분'] = np.select([df_nh['입금금액_clean'] > 0, df_nh['출금금액_clean'] > 0], ['입금', '출금'], default=pd.NA)
+        # df_nh_standard['사용구분'] = np.select([df_nh['입금금액_clean'] > 0, df_nh['출금금액_clean'] > 0], ['입금', '출금'], default=pd.NA)
+        df_nh_standard['사용구분'] = np.select(
+            [
+                df_nh['출금금액_clean'] < 0,  # 조건 1: 출금금액이 음수인 경우 (취소/환불)
+                df_nh['입금금액_clean'] > 0,  # 조건 2: 입금금액이 양수인 경우
+                df_nh['출금금액_clean'] > 0   # 조건 3: 출금금액이 양수인 경우
+            ],
+            [
+                '취소',
+                '입금', 
+                '출금'
+            ],
+            default=pd.NA
+        )
+
         # 3단계: 사용내역 생성
         df_nh_standard['사용내역'] = df_nh['거래내용'].replace('', pd.NA)
         # 4단계: 거래상대방 생성
-        df_nh_standard['거래상대방'] = combine_and_clean_str(df_nh, ['거래기록사항', '거래점'])
+        # df_nh_standard['거래상대방'] = combine_and_clean_str(df_nh, ['거래기록사항', '거래점'])
+        df_nh_standard['거래상대방'] = df_nh['거래기록사항'].replace('', pd.NA)
         # 5단계: 입금액 생성
         df_nh_standard['입금액'] = df_nh['입금금액_clean']
         # 6단계: 출금액 생성
@@ -227,7 +252,8 @@ def process_all_files(file_map):
         # 7단계: 잔액 생성
         df_nh_standard['잔액'] = clean_amount(df_nh['거래후잔액'])
         # 8단계: 메모 생성
-        df_nh_standard['메모'] = df_nh['거래메모'].replace('', pd.NA)
+        # df_nh_standard['메모'] = df_nh['거래메모'].replace('', pd.NA)
+        df_nh_standard['메모'] = combine_and_clean_str(df_nh, ['거래점', '거래메모'])
         # 9단계: 파일 출처 추가
         df_nh_standard['출처'] = '농협_혜진'
         
@@ -250,7 +276,8 @@ def process_all_files(file_map):
         # 2단계: 사용구분 생성
         df_shinhan_standard['사용구분'] = np.select([df_shinhan['입금_clean'] > 0, df_shinhan['출금_clean'] > 0], ['입금', '출금'], default=pd.NA)
         # 3단계: 사용내역 생성
-        df_shinhan_standard['사용내역'] = combine_and_clean_str(df_shinhan, ['적요', '내용'])
+        # df_shinhan_standard['사용내역'] = combine_and_clean_str(df_shinhan, ['적요', '내용'])
+        df_shinhan_standard['사용내역'] = df_shinhan['적요']
         # 4단계: 거래상대방 생성
         df_shinhan_standard['거래상대방'] = combine_and_clean_str(df_shinhan, ['내용', '거래점'])
         # 5단계: 입금액 생성
@@ -298,14 +325,27 @@ def run_data_integration_pipeline():
         print("\n**통합할 데이터가 없습니다. 파일 경로 또는 내용을 확인해주세요.**")
         return None
         
+    # 4.1.1. 필터링 로직 추가
+    FILTER_DATE_STR = '2024.10.04 00:00:00'
+    filter_start_date = pd.to_datetime(FILTER_DATE_STR, format='%Y.%m.%d %H:%M:%S', errors='coerce')
+
+    # 주의: 거래일시 컬럼이 NaT인 값(파싱 오류)은 필터링에서 제외됩니다.
+    final_df = final_df[final_df['거래일시'] >= filter_start_date].reset_index(drop=True)
+    
+    if final_df.empty:
+        print(f"\n**필터링 기준({FILTER_DATE_STR} 이후)을 만족하는 거래 내역이 없습니다.**")
+        return None
+
     # 4.2. 최종 정렬
     # 거래 일시를 기준으로 최신순 정렬
-    final_df = final_df.sort_values(by='거래일시', ascending=False).reset_index(drop=True)
+    final_df = final_df.sort_values(
+        # by=['출처', '거래일시'], 
+        # ascending=[True, False]
+        by=['거래일시'], 
+        ascending=[False]
+    ).reset_index(drop=True)
 
     # 4.3. 파일 저장 (사용자 요청: tsv 파일로 저장)
-    print("\n" + "="*50)
-    print("## ✅ 금융 거래 내역 통합 및 파일 저장")
-    
     timestamp = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
     output_file_name = f'integrated_transactions_{timestamp}.tsv'
     output_path = LOG_DIR_PATH / output_file_name 
@@ -313,13 +353,13 @@ def run_data_integration_pipeline():
     try:
         final_df.to_csv(output_path, sep='\t', index=False, encoding='utf-8')
         print(f"**총 거래 건수:** {len(final_df)}건")
-        print(f"**💾 통합 데이터 전체 내역을 TSV 파일로 성공적으로 저장했습니다.**")
+        print(f"**✅ 통합 데이터 전체 내역을 TSV 파일로 성공적으로 저장했습니다.**")
         print(f"**저장 경로:** {output_path}")
     except Exception as e:
         print(f"\n⚠️ 데이터 저장 실패: {e}")
     
     # 4.4. 데이터 분석 준비 (DataFrame 반환)
-    print("\n## ✨ 데이터 분석 준비 완료")
+    print("\n## 데이터 분석 준비 완료")
     print("**통합된 DataFrame을 바로 사용할 수 있도록 반환합니다.**")
     print("="*50)
     
