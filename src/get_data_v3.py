@@ -326,7 +326,7 @@ def run_data_integration_pipeline():
         return None
         
     # 4.1.1. 필터링 로직 추가
-    FILTER_DATE_STR = '2025.09.24 00:00:00'
+    FILTER_DATE_STR = '2024.10.04 00:00:00'
     filter_start_date = pd.to_datetime(FILTER_DATE_STR, format='%Y.%m.%d %H:%M:%S', errors='coerce')
 
     # 주의: 거래일시 컬럼이 NaT인 값(파싱 오류)은 필터링에서 제외됩니다.

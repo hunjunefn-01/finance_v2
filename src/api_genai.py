@@ -1,10 +1,12 @@
 import os
 import time
 import json
+import random # ✨ [추가] 랜덤 지연(Jitter)을 위해 random 모듈 import
 from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError # ✨ [추가] API 오류 처리를 위해 import
 
 # ----------------------------------------------------------------------
 # 1. 환경 설정 및 API 클라이언트 초기화 (기존 로직 유지)
@@ -20,9 +22,10 @@ else:
 
 GEMINI_API_KEY = os.getenv('GOOGLE_API_KEY')
 GEMINI_CLIENT = None
-TARGET_MODEL = 'gemini-2.5-flash'
-# TARGET_MODEL = 'gemini-2.5-flash-lite'
-RPM_DELAY_SECONDS = 1.05
+# TARGET_MODEL = 'gemini-2.5-flash'
+TARGET_MODEL = 'gemini-2.5-flash-lite'
+RPM_DELAY_SECONDS = 1.5
+MAX_RETRIES = 3 # ✨ [추가] 503 오류 발생 시 최대 3번 재시도 설정 (총 4번 시도)
 
 if GEMINI_API_KEY:
     try:
@@ -173,68 +176,43 @@ def classify_payments_batch(payment_strings: list, client: genai.Client):
         f"결과는 다음 리스트와 개수가 일치하는 JSON 배열이어야 합니다: \n{json.dumps(payment_strings, ensure_ascii=False)}"
     )
     
-    try:
-        response = client.models.generate_content(
-            model=TARGET_MODEL,
-            contents=[{"role": "user", "parts": [{"text": prompt}]}],
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                response_schema=JSON_SCHEMA
-            )
-        )
-        
-        time.sleep(RPM_DELAY_SECONDS) 
-        print(f"✅ {len(payment_strings)}건 처리 완료. 다음 호출까지 {RPM_DELAY_SECONDS}초 대기.")
+    # ✨ [수정] 재시도 로직 추가
+    for attempt in range(MAX_RETRIES + 1):
+      try:
+          response = client.models.generate_content(
+              model=TARGET_MODEL,
+              contents=[{"role": "user", "parts": [{"text": prompt}]}],
+              config=types.GenerateContentConfig(
+                  system_instruction=SYSTEM_PROMPT,
+                  response_mime_type="application/json",
+                  response_schema=JSON_SCHEMA
+              )
+          )
+          
+          time.sleep(RPM_DELAY_SECONDS) 
+          print(f"✅ {len(payment_strings)}건 처리 완료. 다음 호출까지 {RPM_DELAY_SECONDS}초 대기.")
 
-        return response.text
+          return response.text
 
-    except Exception as e:
-        print(f"❌ API 호출 오류 발생: {e}")
-        return json.dumps([])
-
-# ----------------------------------------------------------------------
-# 4. 테스트 실행 (사용 예시)
-# ----------------------------------------------------------------------
-
-    # # MAX_BATCH_SIZE: 한 번에 처리할 최대 문장 개수를 여기서 설정합니다.
-    # MAX_BATCH_SIZE = 3
-
-    # # 테스트 데이터 (입금/출금/취소 거래를 포함한 다양한 케이스)
-    # sample_data = [
-    #     "CU 편의점 결제 3,500원",                     # 출금 (편의점)
-    #     "월급 이체 3,500,000원",                       # 입금 (소득)
-    #     "토스뱅크 마이너스 이자 출금 10,200원",          # 출금 (이자)
-    #     "티웨이항공 결제 취소 50,000원",               # 취소 (여행 관련 환불)
-    #     "아파트 관리비 자동납부 180,000원",             # 출금 (주거)
-    #     "이마트 트레이더스 150,000원",                 # 출금 (장보기)
-    # ]
-
-    # if GEMINI_CLIENT:
-    #     print(f"## {TARGET_MODEL} 전체 배치 분류 테스트 시작 (총 {len(sample_data)}건)")
-        
-    #     all_results = [] # 모든 배치 결과를 담을 리스트
-    #     data_length = len(sample_data)
-        
-    #     # 핵심 수정 부분: 데이터 분할 및 반복 처리
-    #     for i in range(0, data_length, MAX_BATCH_SIZE):
-    #         # 현재 배치에 해당하는 문장들을 슬라이싱
-    #         batch = sample_data[i:i + MAX_BATCH_SIZE]
-            
-    #         print(f"\n--- [배치 {i//MAX_BATCH_SIZE + 1} / 총 {int((data_length + MAX_BATCH_SIZE - 1) / MAX_BATCH_SIZE)} ({len(batch)}건 처리)] ---")
-            
-    #         # classify_payments_batch 함수 호출
-    #         result_json_string = classify_payments_batch(batch, GEMINI_CLIENT)
-            
-    #         # 결과 JSON 파싱 및 통합
-    #         try:
-    #             parsed_json = json.loads(result_json_string)
-    #             all_results.extend(parsed_json) # 리스트에 추가
-    #             print(f"✅ 배치 {i//MAX_BATCH_SIZE + 1} 결과 {len(parsed_json)}건 통합 완료.")
-    #         except json.JSONDecodeError:
-    #             print("❌ JSON 파싱 오류 발생. API 응답을 확인하세요.")
-    #             # 오류 발생 시 반복 중단 또는 건너뛰기 로직 추가 가능
-                
-    #     # 최종 결과 출력
-    #     print(f"## ✅ 최종 통합 분류 결과 (총 {len(all_results)}건)")
-    #     print(json.dumps(all_results, indent=4, ensure_ascii=False))
+      except APIError as e:
+          # 503 UNAVAILABLE 오류이면서 재시도 횟수가 남은 경우
+          if "503" in str(e) and attempt < MAX_RETRIES:
+              # 지수적 백오프 계산: 2^attempt + Jitter (랜덤 지연)
+              wait_time = (2 ** attempt) + random.uniform(0.1, 1.0) 
+              
+              print(f"⚠️ [503 UNAVAILABLE] 오류 발생. {attempt + 1}차 재시도: {wait_time:.2f}초 후 재시도합니다.")
+              time.sleep(wait_time)
+              
+          else:
+              # 503이 아닌 다른 오류이거나, 최대 재시도 횟수를 초과한 경우
+              print(f"❌ API 호출 실패 (최대 시도 횟수 초과 또는 치명적인 오류): {e}")
+              # 오류 처리 로직 (예: 빈 JSON 반환 또는 오류 발생)
+              return "[]" 
+              
+      except Exception as e:
+          # 기타 예기치 못한 파이썬 오류
+          print(f"❌ 예기치 않은 오류 발생: {e}")
+          return "[]"
+    
+    # 모든 시도가 실패하고 for 루프를 빠져나온 경우
+    return "[]"

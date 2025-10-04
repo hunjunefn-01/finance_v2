@@ -60,6 +60,7 @@ def run_full_pipeline():
         
         if GEMINI_CLIENT:
             result_json_string = classify_payments_batch(batch, GEMINI_CLIENT)
+            time.sleep(2.0) 
         else:
             print("❌ AI 클라이언트 초기화 실패. 분류를 건너뜁니다.")
             break
